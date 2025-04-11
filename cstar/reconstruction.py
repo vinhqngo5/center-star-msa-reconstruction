@@ -135,6 +135,43 @@ class CenterStar:
         print(f"  MSA complete. Aligned {len(msa_result)} sequences.")
         return msa_result
 
+def calculate_theoretical_success_prob(m, n, r):
+    """
+    Calculates the theoretical success probability based on our analysis.
+    Uses the direct binomial formula for position-wise success probability.
+    
+    Parameters:
+    - m: length of the true sequence
+    - n: number of samples
+    - r: error rate
+    
+    Returns:
+    - Theoretical success probability
+    """
+    # Check if r is valid for the analysis (r < 1/6)
+    if r >= 1/6:
+        return 0.0  # When r >= 1/6, majority voting fails
+    
+    from scipy import special
+    
+    # Probability of correct character at one position
+    p_correct = 1 - 3*r
+    
+    # Calculate position-wise success probability using the binomial sum:
+    # P(success at position) = sum_{k=⌊n/2⌋+1}^n binom(n,k) * (1-3r)^k * (3r)^(n-k)
+    position_success_prob = 0
+    majority_threshold = n // 2 + 1
+    
+    for k in range(majority_threshold, n + 1):
+        # Calculate binomial probability mass function
+        binomial_coef = special.binom(n, k)
+        position_success_prob += binomial_coef * (p_correct**k) * ((1-p_correct)**(n-k))
+    
+    # Overall success probability (all positions must be correct)
+    overall_success_prob = position_success_prob ** m
+    
+    return overall_success_prob
+  
 # --- Evaluation functions ---
 def run_evaluation(true_length, r, num_samples, num_runs):
     """Runs the reconstruction multiple times and evaluates performance."""
@@ -167,12 +204,8 @@ def run_evaluation(true_length, r, num_samples, num_runs):
         for i in range(msa_len):
             column = [seq[i] for seq in msa_result]
             counts = Counter(column)
-            # Ignore gaps when creating consensus
-            if '-' in counts and counts['-'] >= len(column) / 2:
-                continue
             most_common = counts.most_common(2)
-            most_common = [item for item in most_common if item[0] != '-']
-            if most_common:
+            if most_common and most_common[0][0] != '-':
                 consensus.append(most_common[0][0])
         
         estimated_seq = "".join(consensus)
@@ -204,6 +237,26 @@ def run_evaluation(true_length, r, num_samples, num_runs):
     print(f"Success Rate: {success_rate:.2f}% ({success_count}/{num_runs})")
     print(f"Average Edit Distance (when failed): {average_distance_on_fail:.2f}")
     print(f"Average Reconstruction Time: {average_time:.2f} seconds")
+
+    # --- 6. Compare theoretical vs empirical results ---
+    print("\n--- Theoretical vs Empirical Comparison ---")
+    theoretical_prob = calculate_theoretical_success_prob(true_length, num_samples, r)
+    print(f"Theoretical success probability: {theoretical_prob*100:.2f}%")
+    print(f"Empirical success rate: {success_rate:.2f}%")
+    
+    if num_runs >= 10:  # Only provide detailed analysis if we have enough runs for statistical significance
+        # Calculate theoretical success probability
+        if success_rate < theoretical_prob * 100 * 0.5:
+            print("ANALYSIS: Empirical success rate is significantly lower than theoretical prediction.")
+            print("This suggests that alignment errors in the Center-Star MSA heuristic are")
+            print("reducing performance compared to the theoretical model.")
+        elif success_rate > theoretical_prob * 100 * 1.5:
+            print("ANALYSIS: Empirical success rate is significantly higher than theoretical prediction.")
+            print("This suggests that our theoretical bound is conservative or that favorable")
+            print("characteristics in the generated sequences are improving performance.")
+        else:
+            print("ANALYSIS: Empirical success rate is relatively consistent with theoretical prediction,")
+            print("supporting the validity of our probabilistic analysis for these parameters.")
 
 
 if __name__ == "__main__":
