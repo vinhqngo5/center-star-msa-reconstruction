@@ -59,6 +59,7 @@ SKE
 
 `python cstar.py inputfile outputfile`
 
+`python3 cstar/reconstruction.py --generate --true_length 100 --error_rate 0.05 --num_samples 50 --num_runs 10`
 ## TODOs
 
 * Score matrix support []
